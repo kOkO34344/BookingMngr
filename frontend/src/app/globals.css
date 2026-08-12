@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+@theme {
+  /* Channel colours — used by the calendar, tables and legends. */
+  --color-src-airbnb: #e0565b;
+  --color-src-booking: #2f6fd0;
+  --color-src-phone: #0f9d76;
+  --color-src-whatsapp: #16a34a;
+  --color-src-email: #7c5cd6;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+/* Thin scrollbars for the calendar's horizontal overflow. */
+.scroll-thin::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-slate-300;
+}
