@@ -53,8 +53,9 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
 
 ### 1. Provision
 
-Hetzner CX22 (2 vCPU / 4 GB, ~€4.50/mo) or equivalent, Ubuntu 24.04. **Add your
-SSH key at creation** and note the static IPv4.
+**Hetzner CAX11** (2 vCPU Ampere ARM64 / 4 GB / 40 GB, ~€4–5/mo), Ubuntu 24.04.
+ARM is deliberate: it matches the development Mac, so images build natively.
+**Add your SSH key at creation** and note the static IPv4.
 
 Then run the bootstrap script — it creates a sudo user, copies your key over,
 disables root and password SSH login, sets up ufw and unattended upgrades, and
@@ -131,15 +132,12 @@ Then prove the backup path on day one (see below). Do not skip this.
 
 ---
 
-## Building images: the architecture trap
+## Building and shipping images
 
-An Apple Silicon Mac builds `arm64`. A Hetzner/DO VPS is `amd64`. Images built
-natively on the Mac **will not start** on the VPS. `deploy/build-images.sh`
-handles this — it always builds `--platform linux/amd64` and tags with the short
-git SHA.
-
-Measured on an M-series Mac: backend ~20s, frontend ~65s. Emulation is not the
-problem people expect it to be at this size.
+The CAX11 is ARM64, the same architecture as an Apple Silicon Mac, so images
+build **natively** — no emulation, no cross-build flags to remember, and no
+class of "works here, won't start there" failures. Both images build in about
+50 seconds.
 
 ```bash
 ./deploy/build-images.sh ssh  deploy@<vps-ip>   # registry-free (default)
@@ -152,9 +150,9 @@ problem people expect it to be at this size.
 This is the recommended default.
 
 **`ghcr` mode** needs `docker login ghcr.io` with a Personal Access Token that
-has `write:packages`. Be aware that GHCR's free tier allows **500 MB of private
-package storage** — these two images approach that, so either make the packages
-public, prune old tags, or use `ssh` mode.
+has `write:packages`. Note GHCR's free tier allows **500 MB of private package
+storage** — these two images approach it, so either make the packages public,
+prune old tags, or stay on `ssh` mode.
 
 Either way, set the printed tags in the VPS `.env`:
 
@@ -168,13 +166,13 @@ lines in `.env` and running `docker compose up -d`. The script refuses to build
 from a dirty tree non-interactively, so a tag always names what actually shipped.
 
 **The alternative** is building on the VPS itself (`docker compose up -d
---build`), which needs no registry and no cross-build, but wants the 4 GB box —
-`next build` is the memory hog.
+--build`). The CAX11's 4 GB is enough for `next build`, which is the memory
+hog. That skips the shipping step entirely at the cost of a slower deploy.
 
-> Worth knowing: Hetzner's **CAX11** is ARM64 at roughly the same price as the
-> x86 CX22. On an ARM VPS your Mac builds natively and this whole section stops
-> applying. Every base image here (`python:3.13-slim`, `node:22-alpine`,
-> `postgres:16-alpine`, `caddy:2-alpine`) ships an arm64 variant.
+> If you ever move to an x86 box (Hetzner CX22, DigitalOcean, most providers),
+> images must be rebuilt for it or they will not start:
+> `PLATFORM=linux/amd64 ./deploy/build-images.sh ssh deploy@<ip>`.
+> That path is tested and works; it just costs a little emulation time.
 
 ---
 
