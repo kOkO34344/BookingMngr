@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
-# Cross-build the production images for the VPS and deliver them.
+# Build the production images and deliver them to the VPS.
 #
-# This Mac is arm64; the VPS is amd64, so images must be built for the target
-# explicitly — a natively built image simply will not start over there.
+#   ./deploy/build-images.sh ssh   deploy@1.2.3.4     # registry-free (default)
+#   ./deploy/build-images.sh ghcr  <github-username>   # push to GHCR
+#   ./deploy/build-images.sh local                     # build only, load locally
 #
-#   ./deploy/build-images.sh ssh   deploy@1.2.3.4    # registry-free (default)
-#   ./deploy/build-images.sh ghcr  <github-username>  # push to GHCR
-#   ./deploy/build-images.sh local                    # build only, load locally
+# The target is a Hetzner CAX11, which is ARM64 — the same architecture as an
+# Apple Silicon Mac, so these build natively with no emulation. If you ever move
+# to an x86 box, the images must be rebuilt for it:
+#
+#   PLATFORM=linux/amd64 ./deploy/build-images.sh ssh deploy@1.2.3.4
 #
 # Images are tagged with the short git SHA, never `latest`, so a rollback is
 # editing two lines in the VPS .env and running `docker compose up -d`.
 set -euo pipefail
 
-PLATFORM="linux/amd64"
+PLATFORM="${PLATFORM:-linux/arm64}"
 BUILDER="bookingmngr"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -47,7 +50,20 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 TAG="$(git rev-parse --short HEAD)"
-echo "Building ${PLATFORM} images at ${TAG}"
+
+# Flag emulation, since it is the difference between a one-minute build and a
+# long one — and a mismatch usually means the wrong target was assumed.
+case "$(uname -m)" in
+arm64 | aarch64) host_platform="linux/arm64" ;;
+x86_64 | amd64) host_platform="linux/amd64" ;;
+*) host_platform="unknown" ;;
+esac
+
+if [ "$PLATFORM" = "$host_platform" ]; then
+    echo "Building ${PLATFORM} images at ${TAG}  (native)"
+else
+    echo "Building ${PLATFORM} images at ${TAG}  (emulated on ${host_platform})"
+fi
 
 # --bootstrap so a fresh machine works without a separate setup step.
 docker buildx inspect "$BUILDER" >/dev/null 2>&1 \
