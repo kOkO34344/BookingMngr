@@ -1,20 +1,143 @@
+name: bookingmngr
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# Shared by `backend` and the one-shot `migrate`, so they can never disagree
+# about which database they are pointed at.
+x-backend-env: &backend-env
+  ENVIRONMENT: production
+  DEBUG: "false"
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+  SECRET_KEY: "${SECRET_KEY:?generate one - see .env.example}"
+  ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
+  # Same origin behind Caddy, so no cross-origin request ever happens. Must be
+  # valid JSON — an empty string fails to parse.
+  CORS_ORIGINS: "[]"
+  OWNER_USERNAME: ${OWNER_USERNAME:-owner}
+  OWNER_PASSWORD: "${OWNER_PASSWORD:?set a bootstrap password in .env}"
+  OWNER_EMAIL: ${OWNER_EMAIL:-}
+  DEFAULT_ORGANIZATION_NAME: ${DEFAULT_ORGANIZATION_NAME:-My Properties}
+  DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE:-Europe/Sofia}
+  TZ: ${TZ:-Europe/Sofia}
+
 services:
+  # No `ports:` — Postgres is reachable only from the internal network. The
+  # local overlay publishes it for psql and the native pytest loop.
   db:
     image: postgres:16-alpine
-    container_name: bookingmngr-db
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: bookingmngr
-      POSTGRES_PASSWORD: bookingmngr
-      POSTGRES_DB: bookingmngr
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+      TZ: ${TZ:-Europe/Sofia}
     volumes:
-      - bookingmngr-pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bookingmngr"]
-      interval: 5s
-      timeout: 3s
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
       retries: 10
+    networks: [internal]
+    logging: *logging
+
+  # An explicit, ordered, idempotent step. `service_completed_successfully`
+  # holds the backend back until the schema matches, which removes the
+  # "forgot to migrate" outage entirely.
+  migrate:
+    image: ${BACKEND_IMAGE:-bookingmngr-backend:local}
+    build:
+      context: ./backend
+    command: ["alembic", "upgrade", "head"]
+    environment: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    networks: [internal]
+    logging: *logging
+
+  backend:
+    image: ${BACKEND_IMAGE:-bookingmngr-backend:local}
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks: [internal]
+    logging: *logging
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-bookingmngr-frontend:local}
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Sofia}
+    depends_on:
+      - backend
+    networks: [internal]
+    logging: *logging
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SITE_ADDRESS: "${SITE_ADDRESS:?hostname, or http://localhost for local runs}"
+      ACME_EMAIL: "${ACME_EMAIL:?any address, for certificate expiry notices}"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates live here. Deleting this volume means re-issuing them and
+      # can hit Let's Encrypt rate limits.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+    networks: [internal]
+    logging: *logging
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_HOUR: ${BACKUP_HOUR:-3}
+      BACKUP_MINUTE: ${BACKUP_MINUTE:-15}
+      TZ: ${TZ:-Europe/Sofia}
+    entrypoint: ["/bin/sh", "/opt/backup/backup-loop.sh"]
+    volumes:
+      - ./deploy/backup:/opt/backup:ro
+      # A bind mount, not a named volume, so dumps are easy to see and scp off.
+      - ./backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [internal]
+    logging: *logging
+
+networks:
+  internal:
+    driver: bridge
 
 volumes:
-  bookingmngr-pgdata:
+  pgdata:
+  caddy_data:
+  caddy_config:

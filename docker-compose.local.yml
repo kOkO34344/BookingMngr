@@ -1,0 +1,11 @@
+# Local-only overlay for the development Mac.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
+#
+# Deliberately NOT named docker-compose.override.yml: an override file is
+# applied automatically, and publishing Postgres to the host on the VPS is
+# exactly what this project must never do by accident.
+services:
+  db:
+    ports:
+      - "5432:5432"

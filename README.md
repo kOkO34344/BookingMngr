@@ -11,21 +11,42 @@ multi-tenant is a later configuration change, not a rewrite.
 ```
 backend/    FastAPI + SQLAlchemy 2.0 + PostgreSQL
 frontend/   Next.js (App Router) + TypeScript + Tailwind v4
+deploy/     Caddy config, backup scripts, and the deployment runbook
 ```
 
-## Quick start
+## Running the whole thing in Docker
+
+The fastest way to see it working, and the same stack that runs in production —
+Caddy serving the UI and API on one origin, Postgres, and nightly backups:
+
+```bash
+cp .env.example .env             # fill in the three secrets it asks for
+mkdir -p backups
+docker compose up -d --build
+docker compose exec backend python -m app.db.init_db
+docker compose exec backend python -m app.db.seed     # optional demo data
+```
+
+Then open <http://localhost>. See [deploy/README.md](deploy/README.md) for
+putting it on a server.
+
+## Quick start (native dev loop)
+
+Use this when you want `--reload` and Fast Refresh.
 
 **1. Database**
 
 ```bash
-docker compose up -d db          # Postgres 16 on :5432
+# The local overlay is what publishes 5432 to the host; the production
+# compose file deliberately does not.
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d db
 ```
 
 **2. Backend**
 
 ```bash
 cd backend
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 cp .env.example .env             # set SECRET_KEY and OWNER_PASSWORD
 .venv/bin/python -m alembic upgrade head   # schema
 .venv/bin/python -m app.db.init_db         # owner account
@@ -60,10 +81,13 @@ The suite also runs against the real target — worth doing before a release,
 since SQLite is lenient about things Postgres is not:
 
 ```bash
-docker exec bookingmngr-db psql -U bookingmngr -c "CREATE DATABASE bookingmngr_test"
+docker compose exec db psql -U bookingmngr -c "CREATE DATABASE bookingmngr_test"
 cd backend && TEST_DATABASE_URL=postgresql+psycopg://bookingmngr:bookingmngr@localhost:5432/bookingmngr_test \
     .venv/bin/python -m pytest tests -q
 ```
+
+`requirements.txt` is runtime only — `pytest` and `httpx` live in
+`requirements-dev.txt` so they never ship in the production image.
 
 Stop `next dev` before running `npm run build` — they share `.next`, and a
 concurrent build leaves the dev server serving broken chunks.
@@ -177,8 +201,14 @@ reconciliation.
 - Frontend types in `lib/types.ts` are hand-maintained. Generating them from
   `/api/v1/openapi.json` is the obvious next step.
 - Auth is a long-lived bearer token in `localStorage` — fine for a single
-  internal user, worth revisiting if staff accounts are added.
+  internal user, worth revisiting if staff accounts are added. Changing a
+  password does not invalidate tokens already issued; that needs a
+  `tokens_valid_from` column on `User`.
+- `User.role` exists but nothing checks it. Every account has full access to its
+  organization.
 - Test coverage is API-level only; there are no frontend tests.
+- Backups are local to the server. Once there is real revenue in there, copy
+  them somewhere else.
 - The overlap constraint's status list is frozen in its migration. Adding a
   status that should hold a unit means writing a migration to rebuild it, not
   just editing `BLOCKING_RESERVATION_STATUSES`.

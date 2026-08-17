@@ -48,6 +48,68 @@ def test_login_required(client, api):
     assert unauthenticated.status_code == 401
 
 
+def test_malformed_token_subject_is_rejected_not_a_server_error(client, api):
+    """A correctly signed token with a non-numeric `sub` must 401, not 500."""
+    from app.core.security import create_access_token
+
+    token = create_access_token("not-an-integer", organization_id=1)
+    response = client.get(f"{api}/properties", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 401
+
+
+def test_password_change_round_trip(client, api):
+    new_password = "a-much-better-password"
+
+    rejected = client.post(
+        f"{api}/auth/change-password",
+        json={"current_password": "wrong", "new_password": new_password},
+    )
+    assert rejected.status_code == 400
+
+    too_short = client.post(
+        f"{api}/auth/change-password",
+        json={"current_password": "secret", "new_password": "short"},
+    )
+    assert too_short.status_code == 422
+
+    changed = client.post(
+        f"{api}/auth/change-password",
+        json={"current_password": "secret", "new_password": new_password},
+    )
+    assert changed.status_code == 200, changed.text
+
+    # The old password must stop working and the new one must start.
+    login = lambda password: client.post(  # noqa: E731
+        f"{api}/auth/login", json={"username": "owner", "password": password}
+    )
+    assert login("secret").status_code == 401
+    assert login(new_password).status_code == 200
+
+
+def test_repeated_bad_passwords_are_rate_limited(client, api):
+    from app.core.ratelimit import login_limiter
+
+    login_limiter._failures.clear()
+    try:
+        statuses = [
+            client.post(
+                f"{api}/auth/login",
+                json={"username": "owner", "password": "nope"},
+            ).status_code
+            for _ in range(login_limiter.max_attempts + 2)
+        ]
+        assert statuses[0] == 401
+        assert statuses[-1] == 429
+
+        # A correct password stays blocked while the window is open.
+        blocked = client.post(
+            f"{api}/auth/login", json={"username": "owner", "password": "secret"}
+        )
+        assert blocked.status_code == 429
+    finally:
+        login_limiter._failures.clear()
+
+
 def test_property_and_unit_crud(client, api):
     prop = _create_property(client, api)
     assert prop["units_count"] == 0

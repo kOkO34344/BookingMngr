@@ -7,8 +7,7 @@ pydantic==2.10.4
 email-validator==2.2.0
 pydantic-settings==2.7.0
 python-jose[cryptography]==3.3.0
+# passlib 1.7.4 breaks against bcrypt >= 4.1 — these two move together.
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 python-multipart==0.0.20
-httpx==0.28.1
-pytest==8.3.4

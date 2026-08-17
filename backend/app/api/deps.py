@@ -33,7 +33,15 @@ def get_current_user(
     if payload is None or "sub" not in payload:
         raise credentials_error
 
-    user = db.get(User, int(payload["sub"]))
+    # `sub` is attacker-influenced in the sense that any signed token could
+    # carry a non-numeric one; int() would then raise ValueError and surface a
+    # 500 instead of the 401 this is.
+    try:
+        user_id = int(payload["sub"])
+    except (TypeError, ValueError):
+        raise credentials_error from None
+
+    user = db.get(User, user_id)
     if user is None or not user.is_active:
         raise credentials_error
     return user

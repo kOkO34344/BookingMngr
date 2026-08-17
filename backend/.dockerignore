@@ -1,0 +1,17 @@
+# backend/.env holds a real SECRET_KEY — it must never enter an image layer.
+# All production config arrives through the process environment instead.
+.env
+.env.*
+!.env.example
+
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+Dockerfile
+.dockerignore
+*.md

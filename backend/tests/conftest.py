@@ -106,3 +106,18 @@ def client(db: Session, owner: User) -> Generator[TestClient, None, None]:
 @pytest.fixture
 def api() -> str:
     return settings.api_v1_prefix
+
+
+@pytest.fixture(autouse=True)
+def _reset_login_limiter() -> Generator[None, None, None]:
+    """The limiter is module-level, so failures would leak between tests.
+
+    The `client` fixture signs in once per test, which resets the bucket on
+    success — but a test that deliberately exhausts the limit would otherwise
+    poison whichever test ran next.
+    """
+    from app.core.ratelimit import login_limiter
+
+    login_limiter._failures.clear()
+    yield
+    login_limiter._failures.clear()

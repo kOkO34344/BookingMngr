@@ -1,0 +1,45 @@
+{
+	email {$ACME_EMAIL}
+	# While debugging certificates, switch to staging so a failed loop does not
+	# burn the Let's Encrypt production rate limit for the day:
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+# SITE_ADDRESS without a scheme (bookingmngr.duckdns.org) makes Caddy obtain and
+# renew a certificate automatically. With http://localhost it serves plain HTTP
+# and skips ACME entirely, so this same file works for local verification.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	# `handle` blocks are mutually exclusive and evaluated in written order, so
+	# these win over the proxies below regardless of directive sorting. The API
+	# also gates them on ENVIRONMENT=production; this is the second lock.
+	handle /docs* {
+		respond 404
+	}
+	handle /redoc* {
+		respond 404
+	}
+	handle /api/v1/openapi.json {
+		respond 404
+	}
+
+	# Same origin for UI and API: no CORS, and no API URL baked into the bundle.
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+	handle /health* {
+		reverse_proxy backend:8000
+	}
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

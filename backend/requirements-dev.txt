@@ -1,0 +1,7 @@
+# Test-only. Kept out of requirements.txt so they do not ship in the image:
+# httpx is pulled in solely by fastapi's TestClient — no application module
+# imports it.
+-r requirements.txt
+
+pytest==8.3.4
+httpx==0.28.1

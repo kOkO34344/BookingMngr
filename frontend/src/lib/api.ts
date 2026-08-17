@@ -20,8 +20,16 @@ import type {
   Unit,
 } from "./types";
 
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
+/**
+ * Same-origin by default: in production Caddy serves the API and the UI from
+ * one hostname, so no absolute URL is needed. That matters because Next inlines
+ * `NEXT_PUBLIC_*` at build time — an absolute URL here would be baked into the
+ * image, and moving the app to another hostname would mean rebuilding it.
+ *
+ * Set NEXT_PUBLIC_API_BASE_URL to an absolute URL to point at a backend on a
+ * different origin (the split dev setup does this).
+ */
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api/v1";
 
 const TOKEN_KEY = "bookingmngr.token";
 
@@ -64,7 +72,14 @@ export class ApiError extends Error {
 type QueryValue = string | number | boolean | null | undefined;
 
 function buildUrl(path: string, params?: Record<string, QueryValue>): string {
-  const url = new URL(`${API_BASE_URL}${path}`);
+  // `new URL` needs a base when API_BASE_URL is relative. An absolute
+  // API_BASE_URL takes precedence over the base, so this works either way.
+  // The server-side placeholder is never used for a real request — every
+  // caller is a client component — but it keeps `new URL` from throwing if a
+  // module is evaluated during prerender.
+  const origin =
+    typeof window === "undefined" ? "http://localhost" : window.location.origin;
+  const url = new URL(`${API_BASE_URL}${path}`, origin);
   for (const [key, value] of Object.entries(params ?? {})) {
     if (value !== undefined && value !== null && value !== "") {
       url.searchParams.set(key, String(value));
@@ -143,6 +158,11 @@ export const api = {
         { username, password },
       ),
     me: () => get<CurrentUser>("/auth/me"),
+    changePassword: (currentPassword: string, newPassword: string) =>
+      post<{ detail: string }>("/auth/change-password", {
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
   },
 
   properties: {

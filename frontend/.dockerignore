@@ -1,0 +1,18 @@
+# Next inlines NEXT_PUBLIC_* at build time, so .env.local reaching the build
+# context would hard-bake this developer's http://localhost:8010 API URL into
+# the production bundle — the deployed app would silently call a laptop.
+# Keeping env files out is what makes the same-origin "/api/v1" default apply.
+.env
+.env.*
+!.env.local.example
+
+node_modules/
+.next/
+out/
+npm-debug.log*
+*.tsbuildinfo
+next-env.d.ts
+
+Dockerfile
+.dockerignore
+*.md

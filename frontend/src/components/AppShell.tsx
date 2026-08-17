@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { useApp } from "@/lib/app-context";
 import { useAuth } from "@/lib/auth";
 import { formatDateLong, todayIso } from "@/lib/format";
 
+import { ChangePasswordForm } from "./ChangePasswordForm";
+import { Modal } from "./Modal";
 import { Button, Select, cx } from "./ui";
 
 const NAV = [
@@ -23,6 +25,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const { properties, propertyId, setPropertyId, date, setDate } = useApp();
+  const [showPassword, setShowPassword] = useState(false);
 
   return (
     <div className="flex min-h-screen">
@@ -55,9 +58,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           <p className="truncate text-xs text-slate-500">
             Signed in as <span className="font-medium text-slate-700">{user?.username}</span>
           </p>
-          <Button variant="ghost" size="sm" className="mt-1 -ml-2" onClick={logout}>
-            Sign out
-          </Button>
+          <div className="-ml-2 mt-1 flex flex-wrap gap-1">
+            <Button variant="ghost" size="sm" onClick={() => setShowPassword(true)}>
+              Change password
+            </Button>
+            <Button variant="ghost" size="sm" onClick={logout}>
+              Sign out
+            </Button>
+          </div>
         </div>
       </aside>
 
@@ -111,6 +119,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <main className="min-w-0 flex-1 p-4 md:p-6">{children}</main>
       </div>
+
+      {showPassword && (
+        <Modal title="Change password" onClose={() => setShowPassword(false)}>
+          <ChangePasswordForm onDone={() => setShowPassword(false)} />
+        </Modal>
+      )}
     </div>
   );
 }
