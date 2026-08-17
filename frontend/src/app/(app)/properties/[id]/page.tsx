@@ -203,7 +203,7 @@ export default function PropertyDetailPage() {
             </div>
           )}
           {units.data && units.data.length > 0 && (
-            <Table>
+            <Table minWidth="520px">
               <thead>
                 <tr>
                   <Th>Unit</Th>

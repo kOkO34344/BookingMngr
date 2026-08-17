@@ -38,6 +38,15 @@ export function clearToken(): void {
   window.localStorage.removeItem(TOKEN_KEY);
 }
 
+/** Drop the dead token and send the browser back to the login screen. */
+function endSession(): void {
+  if (typeof window === "undefined") return;
+  clearToken();
+  if (window.location.pathname !== "/login") {
+    window.location.replace("/login");
+  }
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -98,7 +107,14 @@ async function request<T>(
     } catch {
       /* body was not JSON — keep the generic message */
     }
-    throw new ApiError(response.status, detail);
+    const error = new ApiError(response.status, detail);
+    // The token is only checked when the app mounts, so an expiry mid-session
+    // would otherwise leave every page showing an error note with no way back
+    // to the login screen. A failed login is exempt: it must show its message.
+    if (error.isUnauthorized && path !== "/auth/login") {
+      endSession();
+    }
+    throw error;
   }
 
   if (response.status === 204) return undefined as T;

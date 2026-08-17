@@ -195,6 +195,9 @@ export interface DailyBoardResponse {
   date: string;
   properties: PropertyBoard[];
   totals: DailyBoardKpis;
+  /** Net payout for stays checked out between the 1st and `date`. */
+  net_payout_mtd: string;
+  currency: string;
 }
 
 export interface RevenueBySource {

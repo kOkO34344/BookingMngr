@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Modal } from "@/components/Modal";
 import { ReservationForm } from "@/components/ReservationForm";
@@ -34,6 +34,9 @@ import {
 } from "@/lib/format";
 import type { ReservationSource, ReservationStatus } from "@/lib/types";
 import { useAsync } from "@/lib/use-async";
+import { useDebounced } from "@/lib/use-debounced";
+
+const PAGE_SIZE = 50;
 
 export default function ReservationsPage() {
   const { propertyId } = useApp();
@@ -43,7 +46,25 @@ export default function ReservationsPage() {
   const [status, setStatus] = useState<ReservationStatus | "">("");
   const [source, setSource] = useState<ReservationSource | "">("");
   const [search, setSearch] = useState("");
+  const [offset, setOffset] = useState(0);
   const [showForm, setShowForm] = useState(false);
+
+  // One request per keystroke otherwise — `search` feeds the dependency list.
+  const debouncedSearch = useDebounced(search);
+
+  /** Changing a filter invalidates the page you were on. Reset with the same
+   *  update, not in an effect afterwards — an effect refetches page N first. */
+  function filter<T>(apply: (value: T) => void) {
+    return (value: T) => {
+      apply(value);
+      setOffset(0);
+    };
+  }
+
+  // The property selector lives in the top bar, so it can change under us.
+  useEffect(() => {
+    setOffset(0);
+  }, [propertyId]);
 
   const reservations = useAsync(
     () =>
@@ -53,11 +74,15 @@ export default function ReservationsPage() {
         to_date: toDate || undefined,
         status: status || undefined,
         source: source || undefined,
-        search: search || undefined,
-        limit: 200,
+        search: debouncedSearch || undefined,
+        limit: PAGE_SIZE,
+        offset,
       }),
-    [propertyId, fromDate, toDate, status, source, search],
+    [propertyId, fromDate, toDate, status, source, debouncedSearch, offset],
   );
+
+  const total = reservations.data?.total ?? 0;
+  const shown = reservations.data?.items.length ?? 0;
 
   return (
     <>
@@ -77,20 +102,22 @@ export default function ReservationsPage() {
             <Input
               type="date"
               value={fromDate}
-              onChange={(event) => setFromDate(event.target.value)}
+              onChange={(event) => filter(setFromDate)(event.target.value)}
             />
           </Field>
           <Field label="To">
             <Input
               type="date"
               value={toDate}
-              onChange={(event) => setToDate(event.target.value)}
+              onChange={(event) => filter(setToDate)(event.target.value)}
             />
           </Field>
           <Field label="Status">
             <Select
               value={status}
-              onChange={(event) => setStatus(event.target.value as ReservationStatus | "")}
+              onChange={(event) =>
+                filter(setStatus)(event.target.value as ReservationStatus | "")
+              }
             >
               <option value="">Any status</option>
               {(Object.keys(RESERVATION_STATUS_LABELS) as ReservationStatus[]).map((s) => (
@@ -103,7 +130,9 @@ export default function ReservationsPage() {
           <Field label="Channel">
             <Select
               value={source}
-              onChange={(event) => setSource(event.target.value as ReservationSource | "")}
+              onChange={(event) =>
+                filter(setSource)(event.target.value as ReservationSource | "")
+              }
             >
               <option value="">Any channel</option>
               {(Object.keys(SOURCE_LABELS) as ReservationSource[]).map((s) => (
@@ -116,7 +145,7 @@ export default function ReservationsPage() {
           <Field label="Search" hint="Guest, reference or notes">
             <Input
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => filter(setSearch)(event.target.value)}
               placeholder="Petrova, HMABC…"
             />
           </Field>
@@ -196,10 +225,28 @@ export default function ReservationsPage() {
         )}
       </Card>
 
-      {reservations.data && (
-        <p className="mt-2 text-xs text-slate-500">
-          Showing {reservations.data.items.length} of {reservations.data.total}.
-        </p>
+      {reservations.data && total > 0 && (
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <p className="text-xs text-slate-500">
+            Showing {offset + 1}–{offset + shown} of {total}.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              disabled={offset === 0}
+              onClick={() => setOffset((current) => Math.max(0, current - PAGE_SIZE))}
+            >
+              Previous
+            </Button>
+            <Button
+              size="sm"
+              disabled={offset + shown >= total}
+              onClick={() => setOffset((current) => current + PAGE_SIZE)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
       )}
 
       {showForm && (
@@ -208,7 +255,9 @@ export default function ReservationsPage() {
             onCancel={() => setShowForm(false)}
             onCreated={() => {
               setShowForm(false);
-              reservations.reload();
+              // Back to the first page, where the new booking will be.
+              if (offset === 0) reservations.reload();
+              else setOffset(0);
             }}
           />
         </Modal>

@@ -212,10 +212,23 @@ export function Textarea({
 
 // --- Table -----------------------------------------------------------------
 
-export function Table({ children }: { children: ReactNode }) {
+/**
+ * `minWidth` is the point below which the table scrolls instead of squashing.
+ * Narrow tables in a sidebar column need a lower floor than the default, or
+ * their last column is clipped by the card they sit in.
+ */
+export function Table({
+  children,
+  minWidth = "640px",
+}: {
+  children: ReactNode;
+  minWidth?: string;
+}) {
   return (
     <div className="scroll-thin overflow-x-auto">
-      <table className="w-full min-w-[640px] text-sm">{children}</table>
+      <table className="w-full text-sm" style={{ minWidth }}>
+        {children}
+      </table>
     </div>
   );
 }

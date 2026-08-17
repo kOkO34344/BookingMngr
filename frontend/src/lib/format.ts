@@ -141,10 +141,13 @@ export const HOUSEKEEPING_LABELS: Record<HousekeepingStatus, string> = {
 // --- Colours ---------------------------------------------------------------
 
 /** Solid block colours for the calendar, keyed by channel. */
+// One hue per channel. Phone is amber rather than a second green — at block
+// size a teal-green and a green read as the same colour, and the calendar
+// encodes the channel with nothing but this colour.
 export const SOURCE_BLOCK_CLASSES: Record<ReservationSource, string> = {
   airbnb: "bg-[#e0565b] text-white",
   booking: "bg-[#2f6fd0] text-white",
-  phone: "bg-[#0f9d76] text-white",
+  phone: "bg-[#d97706] text-white",
   whatsapp: "bg-[#16a34a] text-white",
   email: "bg-[#7c5cd6] text-white",
 };
@@ -152,7 +155,7 @@ export const SOURCE_BLOCK_CLASSES: Record<ReservationSource, string> = {
 export const SOURCE_DOT_CLASSES: Record<ReservationSource, string> = {
   airbnb: "bg-[#e0565b]",
   booking: "bg-[#2f6fd0]",
-  phone: "bg-[#0f9d76]",
+  phone: "bg-[#d97706]",
   whatsapp: "bg-[#16a34a]",
   email: "bg-[#7c5cd6]",
 };

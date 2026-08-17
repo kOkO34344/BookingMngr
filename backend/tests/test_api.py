@@ -228,3 +228,42 @@ def test_daily_board_and_monthly_revenue(client, api):
     assert "phone" in sources
     assert sources["phone"]["net_payout_amount"] == "200.00"
     assert revenue["properties"][0]["property_name"] == "Seaside Hotel"
+
+
+def test_board_mtd_excludes_stays_that_have_not_checked_out_yet(client, api):
+    """The dashboard's month-to-date KPI stops at the board's date.
+
+    Monthly revenue covers the whole month on purpose, so summing that for a
+    figure labelled "MTD" counts stays that have not happened yet.
+    """
+    # Anchor mid-month so "earlier this month" and "later this month" both exist.
+    anchor = TODAY.replace(day=15)
+    prop = _create_property(client, api)
+    unit_a = _create_unit(client, api, prop["id"], "201")
+    unit_b = _create_unit(client, api, prop["id"], "202")
+
+    # Checked out on the 3rd — real money, already in the owner's pocket.
+    _create_reservation(
+        client, api, prop["id"], unit_a["id"],
+        anchor.replace(day=1), anchor.replace(day=3),
+        status="checked_out", gross_amount="100.00", fees_amount="0.00",
+    )
+    # Checks out on the 25th — booked and confirmed, but not yet earned.
+    _create_reservation(
+        client, api, prop["id"], unit_b["id"],
+        anchor.replace(day=20), anchor.replace(day=25),
+        status="confirmed", gross_amount="500.00", fees_amount="0.00",
+    )
+
+    board = client.get(
+        f"{api}/reports/daily-board", params={"date": anchor.isoformat()}
+    ).json()
+    assert board["net_payout_mtd"] == "100.00"
+    assert board["currency"]
+
+    # The monthly report still counts both — it reports the month, not the MTD.
+    revenue = client.get(
+        f"{api}/reports/monthly-revenue",
+        params={"year": anchor.year, "month": anchor.month},
+    ).json()
+    assert revenue["total_net_payout_amount"] == "600.00"

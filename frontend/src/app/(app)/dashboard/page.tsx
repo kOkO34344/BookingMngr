@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
 
 import { ReservationStatusBadge, SourceTag, TaskStatusBadge } from "@/components/badges";
 import {
@@ -15,7 +14,7 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useApp } from "@/lib/app-context";
-import { formatDate, formatMoney, parseIsoDate, TASK_TYPE_LABELS } from "@/lib/format";
+import { formatDate, formatMoney, TASK_TYPE_LABELS } from "@/lib/format";
 import type { PropertyBoard, Reservation, Task, TaskStatus } from "@/lib/types";
 import { useAsync } from "@/lib/use-async";
 
@@ -23,15 +22,10 @@ const TASK_COLUMNS: TaskStatus[] = ["scheduled", "in_progress", "completed"];
 
 export default function DashboardPage() {
   const { date, propertyId } = useApp();
-  const month = useMemo(() => parseIsoDate(date), [date]);
 
   const board = useAsync(
     () => api.reports.dailyBoard(date, propertyId),
     [date, propertyId],
-  );
-  const revenue = useAsync(
-    () => api.reports.monthlyRevenue(month.getFullYear(), month.getMonth() + 1, propertyId),
-    [month.getFullYear(), month.getMonth(), propertyId],
   );
 
   const totals = board.data?.totals;
@@ -67,8 +61,8 @@ export default function DashboardPage() {
           <Kpi
             label="Revenue MTD"
             value={formatMoney(
-              revenue.data?.total_net_payout_amount ?? null,
-              revenue.data?.currency,
+              board.data?.net_payout_mtd ?? null,
+              board.data?.currency,
             )}
             hint="net payout, checked-out stays"
           />
@@ -166,9 +160,9 @@ function ReservationList({
             >
               {reservation.guest_display_name}
             </Link>
-            <div className="mt-0.5 flex items-center gap-2">
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
               <SourceTag source={reservation.source} />
-              <span className="text-xs text-slate-400">
+              <span className="whitespace-nowrap text-xs text-slate-400">
                 {formatDate(reservation.check_in_date)} →{" "}
                 {formatDate(reservation.check_out_date)}
               </span>

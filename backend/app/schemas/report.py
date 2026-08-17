@@ -35,6 +35,9 @@ class DailyBoardResponse(BaseModel):
     date: date
     properties: list[PropertyBoard]
     totals: DailyBoardKpis
+    #: Net payout for stays checked out between the 1st and the board's date.
+    net_payout_mtd: Decimal
+    currency: str
 
 
 class RevenueBySource(BaseModel):

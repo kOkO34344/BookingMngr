@@ -154,7 +154,18 @@ def daily_board(
         else 0.0
     )
 
-    return DailyBoardResponse(date=target_date, properties=boards, totals=totals)
+    return DailyBoardResponse(
+        date=target_date,
+        properties=boards,
+        totals=totals,
+        net_payout_mtd=month_to_date_net(
+            db,
+            organization_id=organization_id,
+            today=target_date,
+            property_id=property_id,
+        ),
+        currency=settings.default_currency,
+    )
 
 
 def monthly_revenue(

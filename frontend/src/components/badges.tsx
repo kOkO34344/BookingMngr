@@ -26,7 +26,7 @@ import { Badge } from "./ui";
 
 export function SourceTag({ source }: { source: ReservationSource }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700">
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-slate-700">
       <span className={`h-2 w-2 shrink-0 rounded-full ${SOURCE_DOT_CLASSES[source]}`} />
       {SOURCE_LABELS[source]}
     </span>
