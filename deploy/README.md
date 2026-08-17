@@ -53,23 +53,22 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
 
 ### 1. Provision
 
-Hetzner CX22 (2 vCPU / 4 GB, ~€4.50/mo) or equivalent, Ubuntu 24.04. **4 GB
-matters** if you build images on the box — `next build` is the memory hog. Add
-your SSH key at creation and note the static IPv4.
+Hetzner CX22 (2 vCPU / 4 GB, ~€4.50/mo) or equivalent, Ubuntu 24.04. **Add your
+SSH key at creation** and note the static IPv4.
+
+Then run the bootstrap script — it creates a sudo user, copies your key over,
+disables root and password SSH login, sets up ufw and unattended upgrades, and
+installs Docker:
 
 ```bash
-# harden
-sudo adduser deploy && sudo usermod -aG sudo deploy
-sudo sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/;s/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
-sudo systemctl restart ssh
-sudo ufw allow OpenSSH && sudo ufw allow 80 && sudo ufw allow 443 && sudo ufw enable
-sudo apt install -y unattended-upgrades
-sudo timedatectl set-timezone Europe/Sofia
-
-# docker
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER   # log out and back in
+scp deploy/bootstrap-vps.sh root@<ip>:/tmp/
+ssh root@<ip> 'bash /tmp/bootstrap-vps.sh deploy'
 ```
+
+It refuses to disable password authentication unless it finds a working
+authorized key first, and validates the sshd config with `sshd -t` before
+restarting — so it cannot lock you out of your own server. Re-running it is
+safe.
 
 ### 2. Hostname
 
@@ -134,29 +133,48 @@ Then prove the backup path on day one (see below). Do not skip this.
 
 ## Building images: the architecture trap
 
-An Apple Silicon Mac builds `arm64` images. A Hetzner/DO VPS is `amd64`. Images
-built on the Mac **will not run** on the VPS.
+An Apple Silicon Mac builds `arm64`. A Hetzner/DO VPS is `amd64`. Images built
+natively on the Mac **will not start** on the VPS. `deploy/build-images.sh`
+handles this — it always builds `--platform linux/amd64` and tags with the short
+git SHA.
 
-**Option A — build on the VPS** (simplest, no registry):
-`docker compose up -d --build`. Needs the 4 GB box.
-
-**Option B — cross-build and push to GHCR** (faster deploys, real rollbacks):
+Measured on an M-series Mac: backend ~20s, frontend ~65s. Emulation is not the
+problem people expect it to be at this size.
 
 ```bash
-# on the Mac, once
-docker buildx create --name bm --use --bootstrap
-echo $CR_PAT | docker login ghcr.io -u <user> --password-stdin
-
-export TAG=$(git rev-parse --short HEAD)
-docker buildx build --platform linux/amd64 -t ghcr.io/<user>/bookingmngr-backend:$TAG  --push ./backend
-docker buildx build --platform linux/amd64 -t ghcr.io/<user>/bookingmngr-frontend:$TAG --push ./frontend
+./deploy/build-images.sh ssh  deploy@<vps-ip>   # registry-free (default)
+./deploy/build-images.sh ghcr <github-user>     # push to GHCR
+./deploy/build-images.sh local                  # build only, for inspection
 ```
 
-Set `BACKEND_IMAGE` / `FRONTEND_IMAGE` in the VPS `.env` to those tags, then
-`docker compose pull && docker compose up -d`.
+**`ssh` mode** streams the image straight into the remote Docker daemon
+(`docker save | ssh … docker load`). No registry, no account, no storage quota.
+This is the recommended default.
 
-**Always tag with the git SHA, never `latest`** — then a rollback is editing two
-lines in `.env` and running `docker compose up -d`.
+**`ghcr` mode** needs `docker login ghcr.io` with a Personal Access Token that
+has `write:packages`. Be aware that GHCR's free tier allows **500 MB of private
+package storage** — these two images approach that, so either make the packages
+public, prune old tags, or use `ssh` mode.
+
+Either way, set the printed tags in the VPS `.env`:
+
+```
+BACKEND_IMAGE=bookingmngr-backend:<sha>
+FRONTEND_IMAGE=bookingmngr-frontend:<sha>
+```
+
+**Always tag with the git SHA, never `latest`** — a rollback is then editing two
+lines in `.env` and running `docker compose up -d`. The script refuses to build
+from a dirty tree non-interactively, so a tag always names what actually shipped.
+
+**The alternative** is building on the VPS itself (`docker compose up -d
+--build`), which needs no registry and no cross-build, but wants the 4 GB box —
+`next build` is the memory hog.
+
+> Worth knowing: Hetzner's **CAX11** is ARM64 at roughly the same price as the
+> x86 CX22. On an ARM VPS your Mac builds natively and this whole section stops
+> applying. Every base image here (`python:3.13-slim`, `node:22-alpine`,
+> `postgres:16-alpine`, `caddy:2-alpine`) ships an arm64 variant.
 
 ---
 
